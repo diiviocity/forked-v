@@ -31964,7 +31964,7 @@ fn (t &Transformer) resolve_nonident_expr_type(id flat.NodeId) u32 {
 					}
 				}
 				if node.op == .amp && child.kind == .ident && child.value_text() in t.heaped_amp_locals
-					&& child_type_shape.has(.pointer) {
+					&& child_type_shape.has(.pointer) && !t.has_smartcast(child.value_text()) {
 					// A local moved to the heap is stored as its address: `&a` is that pointer.
 					return child_type_source_id
 				}
