@@ -17978,7 +17978,16 @@ fn (mut t Transformer) stabilize_transformed_lvalue_for_reuse(id flat.NodeId) fl
 			if node.op != .mul || node.children_count == 0 {
 				return id
 			}
-			child := t.stabilize_transformed_lvalue_component(t.a.child(&node, 0), 'drop_lvalue_pointer')
+			mut pointer := t.a.child(&node, 0)
+			operand := t.a.nodes[int(pointer)]
+			if node.value.len == 0 && operand.kind == .prefix && operand.value == source_mut_pointer_deref_marker
+				&& operand.children_count == 1 {
+				// Spill the mutable parameter's pointer value. The outer dereference
+				// still applies the source-level * to this saved value.
+				pointer = t.make_prefix(.mul, t.a.child(&operand, 0))
+				t.set_node_typ(int(pointer), operand.typ)
+			}
+			child := t.stabilize_transformed_lvalue_component(pointer, 'drop_lvalue_pointer')
 			return t.rebuild_transformed_lvalue(node, [child])
 		}
 		.paren {

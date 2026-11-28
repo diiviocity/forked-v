@@ -12952,7 +12952,15 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 		}
 	}
 	if name.contains('__') {
-		exact_decl_types := g.fn_decl_param_types[name] or { []types.Type{} }
+		exact_decl_types := g.fn_decl_param_types[name] or {
+			// Ownership builds can emit an explicit main__ prefix. Main functions
+			// register their ABI under the source name in the main module.
+			if name.starts_with('main__') {
+				g.fn_decl_param_types[fn_decl_module_key('main', name[6..])] or { []types.Type{} }
+			} else {
+				[]types.Type{}
+			}
+		}
 		if params := g.tc.fn_param_types[name] {
 			return g.merge_decl_pointer_param_abi(params, exact_decl_types)
 		}
