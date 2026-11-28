@@ -3,6 +3,9 @@
 #undef _FORTIFY_SOURCE
 #include "libc_compat.h"
 #include <limits.h>
+#ifndef PATH_MAX
+#include <linux/limits.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>

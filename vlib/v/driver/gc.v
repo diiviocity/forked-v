@@ -15,6 +15,8 @@ fn v3_configure_runtime_gc(building_v bool, cross_output bool, target_os string,
 		'arm64',
 	]
 	standalone := 'freestanding' in defines || 'no_system_libc' in defines
+	// Darwin's syscall layer uses libSystem startup and the regular builtins.
+	if !standalone && pref.normalized_os(target_os) == 'macos' { return disabled }
 	if !standalone || boehm {
 		// The collector's C malloc and pthreads must be independent of the V GC heap.
 		if standalone { record_user_define(mut defines, mut values, 'no_system_libc') }
