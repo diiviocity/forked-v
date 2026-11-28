@@ -27,8 +27,9 @@ fn test_vlibc_native_runtime_against_hosted_oracle() ! {
 			'-cc', 'gcc', '-o', binary]
 		if production { command << '-prod' }
 		command << os.join_path(fixture, 'vpac_runtime.c.v')
-		built_code, built_output := native_runtime_command(command)
-		assert built_code == 0, built_output
+		// Production C compilation can take longer than the probe runtime limit.
+		built := cmdexec.run(command[0], command[1..])
+		assert built.exit_code == 0, built.output
 		result_code, result_output := native_runtime_command([binary])
 		assert result_code == 0, result_output
 		assert result_output == reference_output + 'syslog private socket, errno formatting and filtering passed\n', result_output

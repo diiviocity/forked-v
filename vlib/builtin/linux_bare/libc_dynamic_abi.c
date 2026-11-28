@@ -2,9 +2,113 @@
 #include "libc_dynamic_abi.h"
 #include <dlfcn.h>
 #include <link.h>
+#include <string.h>
 /* Public loader metadata, native callback ABI and per-thread storage only. */
-extern struct r_debug _r_debug __attribute__((weak));
-uintptr_t v_dynamic_head(void) { return &_r_debug ? (uintptr_t)_r_debug.r_map : 0; }
+/* DT_DEBUG is filled in by the interpreter before the executable's preinit
+ * callbacks. Looking up _r_debug as an imported symbol would require an
+ * explicit dependency on ld.so, which older glibc treats as a libc process. */
+static struct r_debug *v_dynamic_debug(void) {
+    extern ElfW(Dyn) _DYNAMIC[] __attribute__((weak));
+    if (_DYNAMIC) {
+        for (const ElfW(Dyn) *d = _DYNAMIC; d->d_tag != DT_NULL; ++d)
+            if (d->d_tag == DT_DEBUG) return (struct r_debug *)d->d_un.d_ptr;
+    }
+    return NULL;
+}
+uintptr_t v_dynamic_head(void) {
+    struct r_debug *debug = v_dynamic_debug();
+    return debug ? (uintptr_t)debug->r_map : 0;
+}
+/* The interpreter need not appear in r_map when no object names it in
+ * DT_NEEDED. Its ELF image and dynamic section are still mapped. */
+extern uintptr_t v_dynamic_map_symbol(uintptr_t, const char *);
+uintptr_t v_bare_loader_symbol(const char *name) {
+    struct r_debug *debug = v_dynamic_debug();
+    if (!debug || !debug->r_ldbase) return 0;
+    ElfW(Addr) base = debug->r_ldbase;
+    const ElfW(Ehdr) *header = (const ElfW(Ehdr) *)base;
+    const ElfW(Phdr) *ph = (const ElfW(Phdr) *)(base + header->e_phoff);
+    for (size_t i = 0; i < header->e_phnum; ++i) {
+        if (ph[i].p_type == PT_DYNAMIC) {
+            struct link_map interpreter = {
+                .l_addr = base, .l_ld = (ElfW(Dyn) *)(base + ph[i].p_vaddr)
+            };
+            return v_dynamic_map_symbol((uintptr_t)&interpreter, name);
+        }
+    }
+    return 0;
+}
+
+struct v_fini_object {
+    struct link_map *map;
+    const char *strings, *soname;
+    unsigned char seen;
+};
+
+static void v_fini_visit(struct v_fini_object *objects, size_t count, size_t index,
+                         struct link_map **order, size_t *used) {
+    struct v_fini_object *object = &objects[index];
+    if (object->seen) return;
+    object->seen = 1;
+    for (const ElfW(Dyn) *d = object->map->l_ld; d->d_tag != DT_NULL; ++d) {
+        if (d->d_tag != DT_NEEDED) continue;
+        const char *needed = object->strings + d->d_un.d_val;
+        for (size_t j = 0; j < count; ++j) {
+            const char *path = objects[j].map->l_name;
+            const char *slash = strrchr(path, '/');
+            if ((objects[j].soname && !strcmp(needed, objects[j].soname)) ||
+                !strcmp(needed, path) || (slash && !strcmp(needed, slash + 1))) {
+                v_fini_visit(objects, count, j, order, used);
+                break;
+            }
+        }
+    }
+    order[(*used)++] = object->map;
+}
+
+/* glibc 2.39 counts the interpreter even when it removes it from r_map.
+ * Its _dl_fini then aborts before calling any destructor. In this case
+ * finalize startup objects in reverse dependency order using the ELF ABI. */
+int v_dynamic_finalize_without_interpreter(void) {
+    struct r_debug *debug = v_dynamic_debug();
+    if (!debug || !debug->r_map) return 0;
+    size_t count = 0;
+    for (struct link_map *m = debug->r_map; m; m = m->l_next) {
+        if (m->l_addr == debug->r_ldbase) return 0;
+        ++count;
+    }
+    struct v_fini_object objects[count];
+    struct link_map *order[count];
+    size_t used = 0, index = 0;
+    for (struct link_map *m = debug->r_map; m; m = m->l_next) {
+        struct v_fini_object *o = &objects[index++];
+        *o = (struct v_fini_object){ .map = m };
+        size_t soname = 0;
+        for (const ElfW(Dyn) *d = m->l_ld; d->d_tag != DT_NULL; ++d) {
+            if (d->d_tag == DT_STRTAB) {
+                uintptr_t addr = d->d_un.d_ptr;
+                o->strings = (const char *)(addr < m->l_addr ? m->l_addr + addr : addr);
+            }
+            if (d->d_tag == DT_SONAME) soname = d->d_un.d_val;
+        }
+        if (soname) o->soname = o->strings + soname;
+    }
+    for (size_t i = count; i; --i) v_fini_visit(objects, count, i - 1, order, &used);
+    while (used) {
+        struct link_map *m = order[--used];
+        void (**array)(void) = NULL;
+        void (*fini)(void) = NULL;
+        size_t length = 0;
+        for (const ElfW(Dyn) *d = m->l_ld; d->d_tag != DT_NULL; ++d) {
+            if (d->d_tag == DT_FINI_ARRAY) array = (void (**)(void))(m->l_addr + d->d_un.d_ptr);
+            if (d->d_tag == DT_FINI_ARRAYSZ) length = d->d_un.d_val / sizeof(*array);
+            if (d->d_tag == DT_FINI) fini = (void (*)(void))(m->l_addr + d->d_un.d_ptr);
+        }
+        while (length) array[--length]();
+        if (fini) fini();
+    }
+    return 1;
+}
 uintptr_t v_dynamic_field(uintptr_t object, int field) {
     const struct link_map *map = (const struct link_map *)object;
     switch (field) {

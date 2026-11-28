@@ -190,8 +190,9 @@ allocations avoid the loader's unreclaimable startup allocator. These are GNU pr
 and DTV/TCB ABIs, so support is specific to that loader and requires compatibility testing.
 Deferred TLS modules loaded after startup are not supported by this thread runtime.
 The preinit callback establishes the environment before shared-library constructors. Main-image
-initializers run once, and the loader's process finalizer runs shared-library destructors before
-stdio is flushed. Explicit static links retain the independent syscall/TLS bootstrap.
+initializers run once. At exit, the runtime runs shared-library destructors before flushing stdio.
+When GNU ld.so omits itself from the link map, V uses ELF dependency order for finalization.
+Explicit static links retain the independent syscall/TLS bootstrap.
 
 macOS uses the native loader and libSystem TLS. Compiler-generated arena, errno, panic,
 recursive-printing and closure-capture state uses real C TLS on these supported targets;

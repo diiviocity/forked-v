@@ -1,5 +1,8 @@
 /* Native ABI and va_list forwarding; checks and buffer operations are V. */
+/* These adapters call the underlying functions after checking their bounds. */
+#undef _FORTIFY_SOURCE
 #include "libc_compat.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -70,6 +73,23 @@ ssize_t __recv_chk(int fd,void *out,size_t n,size_t capacity,int flags) { v_fort
 ssize_t __recvfrom_chk(int fd,void *out,size_t n,size_t capacity,int flags,struct sockaddr *address,socklen_t *size) { v_fortify_bound(n,capacity); return recvfrom(fd,out,n,flags,address,size); }
 ssize_t __readlink_chk(const char *path,char *out,size_t n,size_t capacity) { v_fortify_bound(n,capacity); return readlink(path,out,n); }
 ssize_t __readlinkat_chk(int fd,const char *path,char *out,size_t n,size_t capacity) { v_fortify_bound(n,capacity); return readlinkat(fd,path,out,n); }
+char *__realpath_chk(const char *path, char *out, size_t capacity) {
+    if (out) v_fortify_bound(PATH_MAX, capacity);
+    return realpath(path, out);
+}
+void __explicit_bzero_chk(void *out, size_t n, size_t capacity) {
+    v_fortify_bound(n, capacity);
+    explicit_bzero(out, n);
+}
+size_t __wcrtomb_chk(char *out, wchar_t wc, mbstate_t *state, size_t capacity) {
+    char encoded[MB_LEN_MAX];
+    size_t n = wcrtomb(out ? encoded : NULL, wc, state);
+    if (out && n != (size_t)-1) {
+        v_fortify_bound(n, capacity);
+        memcpy(out, encoded, n);
+    }
+    return n;
+}
 char *__getcwd_chk(char *out,size_t n,size_t capacity) { v_fortify_bound(n,capacity); return getcwd(out,n); }
 int __gethostname_chk(char *out,size_t n,size_t capacity) { v_fortify_bound(n,capacity); return gethostname(out,n); }
 char *__fgets_chk(char *out,size_t capacity,int n,FILE *file) { return (char *)v_fortify_fgets((uintptr_t)out,capacity,n,(uintptr_t)file,1); }

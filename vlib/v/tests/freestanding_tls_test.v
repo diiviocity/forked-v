@@ -33,7 +33,8 @@ fn test_linux_freestanding_tls_initialization_clone_and_invalid_images() ! {
 		os.mkdir_all(work)!
 		defer { os.rmdir_all(work) or {} }
 		source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata', 'freestanding_tls', 'main.v')
-		base := [@VEXE, '-freestanding', '-gc', 'none', '-enable-globals', '-d', 'vlibc']
+		base := [@VEXE, '-freestanding', '-ldflags', '-static', '-gc', 'none', '-enable-globals',
+			'-d', 'vlibc']
 		mut original := []u8{}
 		mut tls := -1
 		for role in ['default', 'offset', 'prod'] {

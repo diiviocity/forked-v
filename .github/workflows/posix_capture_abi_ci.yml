@@ -84,6 +84,8 @@ jobs:
             ./v -silent vlib/os/exec_helpers_test.v
             ./v -silent vlib/os/process_waitpid_abi_nix_test.c.v
             ./v -silent vlib/v/gen/fastc/capture_abi_nix_test.c.v
+            # Nested compiler invocations run under QEMU in this container.
+            export VTEST_TIMEOUT=1200
             ./v test vlib/builtin vlib/os vlib/encoding/binary
             ./v test vlib/v/tests/fns/closure_test.v
 
@@ -140,4 +142,7 @@ jobs:
       - name: Compiler errors
         run: ./v -silent vlib/v/compiler_errors_test.v
       - name: Full compiler suite
+        env:
+          # Individual suites compile hundreds of child fixtures.
+          VTEST_TIMEOUT: '1800'
         run: ./v -silent test vlib/v/

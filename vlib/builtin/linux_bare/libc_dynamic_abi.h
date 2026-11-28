@@ -15,6 +15,7 @@ struct dl_find_object {
 int _dl_find_object(void *,struct dl_find_object *);
 #endif
 uintptr_t v_dynamic_head(void);
+uintptr_t v_bare_loader_symbol(const char *);
 uintptr_t v_dynamic_field(uintptr_t, int);
 uintptr_t v_dynamic_error_buffer(void);
 int v_dynamic_error_pending(int);

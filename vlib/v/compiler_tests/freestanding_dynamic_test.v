@@ -47,7 +47,7 @@ fn test_dynamic_c_libraries_tls_initializers_and_detached_threads_without_libc()
 		for production in [false, true] {
 			for mode in [['-vlibc', '-no-system-libc'],
 				['-syscalls', '-d', 'vlibc', '-no-system-libc'], ['-freestanding'],
-				['-shim-libc', '-cflags', '-std=gnu23']] {
+				['-shim-libc', '-cflags', '-std=gnu2x']] {
 				output := os.join_path(root, '${compiler}_${production}_${mode.join('_')}')
 				mut arguments := ['-no-retry-compilation', '-cc', compiler, '-o', output]
 				arguments << mode
@@ -57,10 +57,11 @@ fn test_dynamic_c_libraries_tls_initializers_and_detached_threads_without_libc()
 				assert built.exit_code == 0, built.output
 				elf := cmdexec.run('readelf', ['-d', output])
 				assert elf.exit_code == 0 && elf.output.contains('libprobe.so') && !elf.output.contains('libc.so'), elf.output
+				assert !elf.output.contains('[ld-linux'), elf.output
 				for run in 0 .. 4 {
 					result := cmdexec.run(output, if run % 2 == 0 { []string{} } else { ['exit'] })
 					assert result.exit_code == 0, '${output}: ${result.exit_code} ${result.output}'
-					assert result.output == 'dynamic TLS ok\nshared finalized\n', result.output
+					assert result.output == 'dynamic TLS ok\nshared finalized\ndependency finalized\n', result.output
 				}
 			}
 		}

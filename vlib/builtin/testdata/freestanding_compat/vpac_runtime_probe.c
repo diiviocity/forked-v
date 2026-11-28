@@ -284,7 +284,13 @@ static int stdio_probe(void) {
     CHECK(f && print(f, "%s", "") == 0 && fwide(f, 0) < 0);
     CHECK(fputs("abcdef", f) >= 0 && !fseek(f, 0, SEEK_SET));
     int shared = dup(fileno(f));
-    CHECK(shared >= 0 && fgetc(f) == 'a' && !fclose(f));
+    CHECK(shared >= 0 && fgetc(f) == 'a');
+#ifdef V_RUNTIME_HOSTED_ORACLE
+    /* Older glibc needs fflush before switching handles on a seekable input
+     * stream. The replacement also reconciles read-ahead in fclose itself. */
+    CHECK(!fflush(f));
+#endif
+    CHECK(!fclose(f));
     CHECK(lseek(shared, 0, SEEK_CUR) == 1 && !close(shared));
     puts("cookie streams and tmpfile passed"); return 0;
 }

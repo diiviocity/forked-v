@@ -86,7 +86,12 @@ fn run_environment_matrix(autofree bool) ! {
 				'-cc', clang]
 			if production { flags << '-prod' }
 			if autofree { flags << '-autofree' }
-			if bare { flags << '-freestanding' }
+			if bare {
+				flags << '-freestanding'
+				$if linux {
+					flags << ['-ldflags', '-static']
+				}
+			}
 			binary := os.join_path(work, 'environment_${bare}_${production}')
 			mut command := flags.clone()
 			command << ['-o', binary, os.join_path(root, 'main.v')]

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 extern int dynamic_base_step(int);
+extern void dynamic_base_probe_finalized(void);
 extern uintptr_t dynamic_base_address(void);
 static __thread int initialized = 41;
 static __thread int zero;
@@ -20,6 +21,7 @@ __attribute__((constructor)) static void initialize(void) {
     constructed++;
 }
 __attribute__((destructor)) static void finalize(void) {
+    dynamic_base_probe_finalized();
     printf("shared finalized\n");
 }
 int dynamic_step(int iteration, void *allocation) {

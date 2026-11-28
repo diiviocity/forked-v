@@ -12582,8 +12582,7 @@ pub fn run(args []string) {
 	effective_c_compiler := selection.effective_c_compiler
 	if backend == 'c' && target.os == 'linux' && (!c_only || generate_c_project != '')
 		&& !is_o && !is_shared && v3_uses_bare_dynamic_loader(user_defines) {
-		// Actual dynamic executables retain their loader through strong ABI
-		// references, without linker-specific push/pop state directives.
+		// Enable TLS for the interpreter selected by the target C toolchain.
 		user_c_flags << '-DV_BARE_DYNAMIC_LOADER=1'
 	}
 	mut native_prefix := ''
@@ -17211,13 +17210,17 @@ pub fn run(args []string) {
 		}
 		if (!c_only || generate_c_project != '') && !is_o && !is_shared && !effective_tcc
 			&& prefs.normalized_target_os() == 'linux' && v3_uses_bare_dynamic_loader(prefs.user_defines) {
-			loader := v3_freestanding_dynamic_loader(c_compiler, prefs.target.arch,
+			_ := v3_freestanding_dynamic_loader(c_compiler, prefs.target.arch,
 				environment_c_flags, target_args, resolved_c_flags, link_ld_flags) or {
 				eprintln('v: dynamic vlibc requires a target GNU ELF loader; use -ldflags -static for a static executable')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			resolved_c_flags << loader
+			// Let the target compiler choose PT_INTERP. An explicit DT_NEEDED for
+			// ld.so makes older GNU loaders require the system libc at startup.
+			if prefs.target.arch == 'amd64' {
+				resolved_c_flags << '-Wl,--export-dynamic-symbol=__tls_get_addr'
+			}
 		}
 		if !c_only && !is_o {
 			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {

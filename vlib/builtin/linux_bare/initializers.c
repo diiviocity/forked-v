@@ -43,13 +43,22 @@ static v_bare_initializer v_bare_preinit_entry = v_bare_preinitialize;
 #include <errno.h>
 #include <sys/mman.h>
 #ifdef V_BARE_DYNAMIC_LOADER
-#define V_BARE_LOADER_ABI
-#else
-#define V_BARE_LOADER_ABI __attribute__((weak))
+extern uintptr_t v_bare_loader_symbol(const char *);
+#if defined(__x86_64__)
+/* DSOs compiled with the general dynamic TLS model call this entry. Use
+ * the interpreter's installed DTV, including during DSO construction. */
+void *__tls_get_addr(void *index) {
+    typedef void *(*resolver)(void *);
+    static resolver cached;
+    resolver resolve = __atomic_load_n(&cached, __ATOMIC_ACQUIRE);
+    if (!resolve) {
+        resolve = (resolver)v_bare_loader_symbol("__tls_get_addr");
+        if (!resolve) __builtin_trap();
+        __atomic_store_n(&cached, resolve, __ATOMIC_RELEASE);
+    }
+    return resolve(index);
+}
 #endif
-extern void *_dl_allocate_tls(void *) V_BARE_LOADER_ABI;
-extern void *_dl_allocate_tls_init(void *, bool) V_BARE_LOADER_ABI;
-extern void _dl_get_tls_static_info(size_t *, size_t *) V_BARE_LOADER_ABI;
 union v_bare_gnu_dtv {
     size_t count;
     struct { void *value, *to_free; } pointer;
@@ -65,19 +74,28 @@ static union v_bare_gnu_dtv *v_bare_get_dtv(void *pointer) {
 #endif
 }
 void *v_bare_loader_tls_allocate(void **thread_pointer, size_t *mapping_size) {
-    if (!_dl_allocate_tls || !_dl_allocate_tls_init || !_dl_get_tls_static_info) {
+    static void *(*allocate_tls)(void *);
+    static void *(*initialize_tls)(void *, bool);
+    static void (*static_info)(size_t *, size_t *);
+    while (__atomic_exchange_n(&v_bare_loader_tls_lock, 1, __ATOMIC_ACQUIRE)) {}
+    if (!allocate_tls) {
+        allocate_tls = (void *(*)(void *))v_bare_loader_symbol("_dl_allocate_tls");
+        initialize_tls = (void *(*)(void *, bool))v_bare_loader_symbol("_dl_allocate_tls_init");
+        static_info = (void (*)(size_t *, size_t *))v_bare_loader_symbol("_dl_get_tls_static_info");
+    }
+    if (!allocate_tls || !initialize_tls || !static_info) {
+        __atomic_store_n(&v_bare_loader_tls_lock, 0, __ATOMIC_RELEASE);
         errno = ENOTSUP;
         return NULL;
     }
-    while (__atomic_exchange_n(&v_bare_loader_tls_lock, 1, __ATOMIC_ACQUIRE)) {}
-    if (!v_bare_loader_tls_probe) v_bare_loader_tls_probe = _dl_allocate_tls(NULL);
+    if (!v_bare_loader_tls_probe) v_bare_loader_tls_probe = allocate_tls(NULL);
     if (!v_bare_loader_tls_probe) {
         __atomic_store_n(&v_bare_loader_tls_lock, 0, __ATOMIC_RELEASE);
         errno = ENOMEM;
         return NULL;
     }
     size_t size, alignment;
-    _dl_get_tls_static_info(&size, &alignment);
+    static_info(&size, &alignment);
     size_t capacity = v_bare_get_dtv(v_bare_loader_tls_probe)[-1].count;
     if (alignment < 16) alignment = 16;
     size_t dtv_bytes = 0, total = 0;
@@ -105,7 +123,7 @@ void *v_bare_loader_tls_allocate(void **thread_pointer, size_t *mapping_size) {
 #else
     ((void **)tp)[0] = dtv;
 #endif
-    _dl_allocate_tls_init((void *)tp, false);
+    initialize_tls((void *)tp, false);
     /* All supported modules are linked at process startup. A deferred TLS
      * module would require loader-owned allocations with different lifetimes. */
     for (size_t i = 1; i <= capacity; ++i) {
@@ -127,6 +145,15 @@ overflow:
     errno = ENOMEM;
     return NULL;
 }
+
+#else
+void *v_bare_loader_tls_allocate(void **thread_pointer, size_t *mapping_size) {
+    (void)thread_pointer;
+    (void)mapping_size;
+    errno = ENOTSUP;
+    return NULL;
+}
+#endif
 
 void v_bare_run_initializers(int argc, char **argv, void (*loader_fini)(void)) {
     extern void v_freestanding_program_names(int32_t, uintptr_t);
@@ -161,7 +188,11 @@ void v_bare_run_finalizers(void) {
     v_freestanding_tls_destructors();
     v_freestanding_exit_callbacks();
     if (v_bare_loader_fini) {
-        v_bare_loader_fini();
+#ifdef V_BARE_DYNAMIC_LOADER
+        extern int v_dynamic_finalize_without_interpreter(void);
+        if (!v_dynamic_finalize_without_interpreter())
+#endif
+            v_bare_loader_fini();
     } else if (__fini_array_start != NULL && __fini_array_end != NULL) {
         v_bare_finalizer *entry = __fini_array_end;
         while (entry != __fini_array_start) {

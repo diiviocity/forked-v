@@ -71,13 +71,22 @@ fn test_freestanding_program_runs_without_libc() {
 		name := if cc == '' { 'default' } else { cc }
 		exe := os.join_path(root, 'main_${name}')
 		mut args := [vexe, '-nocache', '-freestanding']
+		$if linux {
+			args << ['-ldflags', '-static']
+		}
 		if cc != '' {
 			args << ['-cc', cc]
 		}
 		args << ['-o', exe, source]
 		build := os.exec(args)
+		$if linux {
+			if cc == 'tcc' {
+				assert build.exit_code != 0 && build.output.contains('requires a C compiler with native TLS support'), build.output
+				continue
+			}
+		}
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		// A dynamic executable would name its loader, which comes with libc.
+		// A static Linux image has no ELF interpreter.
 		assert !os.read_file(exe)!.contains('ld-linux'), name
 		run := os.exec([exe, 'first', 'second'])
 		assert run.exit_code == 7, '${name}: ${run.output}'

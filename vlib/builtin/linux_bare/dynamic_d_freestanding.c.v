@@ -176,6 +176,12 @@ $if linux && (amd64 || arm64) && !v_bare_no_startup ? {
 		return 0, false
 	}
 
+	@[export: 'v_dynamic_map_symbol'; markused]
+	fn bare_dynamic_map_symbol(object uint, name &char) uint {
+		address, _ := bare_dynamic_lookup(object, uint(name))
+		return address
+	}
+
 	fn bare_dynamic_contains(object uint, address uint) bool {
 		base := C.v_dynamic_field(object, 0)
 		header := if base == 0 { uint(&C.__ehdr_start) } else { base }

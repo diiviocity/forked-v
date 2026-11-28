@@ -1,5 +1,14 @@
 #include <stdint.h>
 #include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+static int probe_finalized;
+void dynamic_base_probe_finalized(void) { probe_finalized = 1; }
+__attribute__((destructor)) static void finalize_base(void) {
+    if (!probe_finalized) _Exit(95);
+    puts("dependency finalized");
+}
 static __thread int initialized = 17;
 static __thread int zero;
 static __thread unsigned char aligned[64] __attribute__((aligned(64)));
