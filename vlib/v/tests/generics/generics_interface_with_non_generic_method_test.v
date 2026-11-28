@@ -30,7 +30,7 @@ struct Node[T] {
 	raw_node  RawNode
 }
 
-fn new_node[T](factory TypeFactory[T], raw_node RawNode) ?Node[T] {
+fn new_factory_node[T](factory TypeFactory[T], raw_node RawNode) ?Node[T] {
 	return Node[T]{
 		factory:   factory
 		type_name: factory.get_type(raw_node.type_name)
@@ -39,11 +39,11 @@ fn new_node[T](factory TypeFactory[T], raw_node RawNode) ?Node[T] {
 }
 
 fn program[T](factory TypeFactory[T]) ? {
-	root1 := new_node[T](factory, RawNode{'literal'})?
+	root1 := new_factory_node[T](factory, RawNode{'literal'})?
 	println(root1)
 	assert root1.type_name == .literal
 
-	root2 := new_node[T](root1.factory, RawNode{'expression'})?
+	root2 := new_factory_node[T](root1.factory, RawNode{'expression'})?
 	println(root2)
 	assert root2.type_name == .expression
 }

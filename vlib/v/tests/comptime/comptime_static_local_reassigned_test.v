@@ -3,10 +3,9 @@ enum Color {
 	green
 }
 
-// A generic function body is not checked for assignments to a local declared without
-// `mut`, so such a local has to stay a runtime value although its initializer is static.
+// A reassigned generic local stays a runtime value even when its initializer is static.
 fn variant_name[T](n int) string {
-	name := ''
+	mut name := ''
 	$for variant in T.values {
 		if int(variant.value) == n {
 			name = variant.name
@@ -19,7 +18,7 @@ fn variant_name[T](n int) string {
 }
 
 fn positive_count[T](values []T) int {
-	count := 0
+	mut count := 0
 	for value in values {
 		if value > 0 {
 			count++
@@ -44,7 +43,7 @@ fn set_generic_local[T](mut value T, next T) {
 
 fn name_after_mut_call[T](sample T) string {
 	_ = sample
-	name := ''
+	mut name := ''
 	set_generic_local(mut name, 'changed')
 	if name == '' {
 		return 'none'
@@ -54,7 +53,7 @@ fn name_after_mut_call[T](sample T) string {
 
 fn count_after_mut_call[T](sample T) int {
 	_ = sample
-	count := 0
+	mut count := 0
 	set_generic_local(mut count, 3)
 	if count == 0 {
 		return -1
@@ -73,7 +72,7 @@ fn string_and_count() (string, int) {
 
 fn name_after_multi_assign[T](sample T) string {
 	_ = sample
-	name := ''
+	mut name := ''
 	other := 'kept'
 	mut count := 0
 	// `name` is a target in the second position, `other` is only read.
@@ -86,7 +85,7 @@ fn name_after_multi_assign[T](sample T) string {
 
 fn name_after_call_assign[T](sample T) string {
 	_ = sample
-	name := ''
+	mut name := ''
 	mut count := 0
 	name, count = string_and_count()
 	if name == '' {
@@ -174,7 +173,7 @@ fn test_local_named_like_an_earlier_block_local_stays_a_compile_time_value() {
 // A captured scalar is a copy that belongs to the closure, so the outer local keeps its value.
 fn name_after_mut_capture[T](sample T) string {
 	_ = sample
-	name := ''
+	mut name := ''
 	set := fn [mut name] () string {
 		name = 'changed'
 		return name

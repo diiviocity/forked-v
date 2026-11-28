@@ -42,7 +42,7 @@ fn test_generic_channel_try_methods_validate_specialized_arguments() {
 		},
 		ChannelTryCase{
 			body:    'ch.try_pop()'
-			message: 'argument count mismatch'
+			message: 'expected 1 argument, but got 0'
 		},
 		ChannelTryCase{
 			body:    'mut value := T{}\nch.try_pop(value)'
