@@ -17782,6 +17782,9 @@ pub fn run(args []string) {
 		// byte-for-byte reproducible
 		// (v5 == v6). A random per-invocation directory beside the final output prevents
 		// concurrent compilers targeting the same path from sharing partial files.
+		if keep_unit := os.getenv_opt('V3_CACHE_KEEP_PROGRAM_C') {
+			os.cp(cc_src, keep_unit) or { eprintln('could not retain program C: ${err}') }
+		}
 		mut result := os.Result{}
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
@@ -17974,9 +17977,6 @@ pub fn run(args []string) {
 			} else if is_shared || is_o {
 				cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 			} else {
-				if keep_unit := os.getenv_opt('V3_CACHE_KEEP_PROGRAM_C') {
-					os.cp(cc_src, keep_unit) or {}
-				}
 				// An executable that is kept is one of the headers that its C reads:
 				// TinyCC writes down the ones that it reads itself.
 				mut link_args := tcc_args.clone()

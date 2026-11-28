@@ -1104,22 +1104,10 @@ fn main() {
 	}
 }
 
-// capture_cached_program_c intercepts the system compiler's input before cleanup.
-fn capture_cached_program_c(root string) []SavedEnv {
-	cc := os.find_abs_path_of_executable('cc') or { panic(err) }
-	dir := os.join_path(root, 'ccbin')
-	os.mkdir_all(dir) or { panic(err) }
-	wrapper := os.join_path(dir, 'cc')
-	os.write_file(wrapper, '#!/bin/sh
-for arg in "$@"; do
-	case "$arg" in *.c|*.c.tmp.*) cp "$arg" "$V_CACHE_DECLARATION_TEST_C";; esac
-done
-exec ${os.quoted_path(cc)} "$@"
-') or { panic(err) }
-	os.chmod(wrapper, 0o755) or { panic(err) }
-	saved := [save_env('PATH'), save_env('V_CACHE_DECLARATION_TEST_C')]
-	os.setenv('PATH', dir + os.path_delimiter + os.getenv('PATH'), true)
-	os.setenv('V_CACHE_DECLARATION_TEST_C', os.join_path(root, 'program.c'), true)
+// Capture the generated program unit while keeping the normal compiler and cache.
+fn capture_cached_program_c(root string) SavedEnv {
+	saved := save_env('V3_CACHE_KEEP_PROGRAM_C')
+	os.setenv('V3_CACHE_KEEP_PROGRAM_C', os.join_path(root, 'program.c'), true)
 	return saved
 }
 
