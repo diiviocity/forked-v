@@ -1,4 +1,5 @@
 #include "initializers.h"
+#include "libc_environment.h"
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,9 +25,8 @@ extern void v_bare_tls_init(void *);
 static void v_bare_preinitialize(int argc, char **argv, char **envp) {
     extern void v_freestanding_program_names(int32_t, uintptr_t);
     v_freestanding_program_names(argc, (uintptr_t)argv);
-    extern char **environ;
     if (!v_bare_startup_running) {
-        environ = envp;
+        v_freestanding_environment_startup(envp);
         v_bare_tls_init((uintptr_t *)argv - 1);
     }
     v_bare_preinitialized = 1;
@@ -163,7 +163,7 @@ void v_bare_run_initializers(int argc, char **argv, void (*loader_fini)(void)) {
     if (loaded) v_bare_loader_fini = loader_fini;
     char **envp = argv + argc + 1;
     extern char **environ;
-    if (!loaded) environ = envp;
+    if (!loaded) v_freestanding_environment_startup(envp);
     if (!loaded && __preinit_array_start != NULL && __preinit_array_end != NULL) {
         for (v_bare_initializer *entry = __preinit_array_start;
              entry != __preinit_array_end; ++entry) {

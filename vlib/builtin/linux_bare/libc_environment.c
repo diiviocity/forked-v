@@ -10,6 +10,11 @@
 char **environ;
 static int v_environment_lock;
 static char **v_owned_vector;
+static char **v_startup_vector;
+
+void v_freestanding_environment_startup(char **envp) {
+    environ = v_startup_vector = envp;
+}
 struct v_env_string {
     struct v_env_string *next;
     char text[];
@@ -99,6 +104,16 @@ static int v_env_install(char *text, size_t length, int overwrite, struct v_env_
     }
     return 0;
 }
+/* An equal value needs no replacement if its storage already belongs to
+ * the runtime or the original process environment. A putenv string is
+ * borrowed: setenv must detach it even if its contents match. */
+static int v_env_is_stable(const char *entry) {
+    for (struct v_env_string *s = v_owned_strings; s; s = s->next)
+        if (s->text == entry) return 1;
+    for (char **p = v_startup_vector; p && *p; ++p)
+        if (*p == entry) return 1;
+    return 0;
+}
 int setenv(const char *name, const char *value, int overwrite) {
     if (!v_env_name(name)) {
         errno = EINVAL;
@@ -111,9 +126,12 @@ int setenv(const char *name, const char *value, int overwrite) {
     }
     v_linux_lock(&v_environment_lock);
     size_t at = v_env_find(name, n, &count);
-    if (at != SIZE_MAX && !overwrite) {
-        v_linux_unlock(&v_environment_lock);
-        return 0;
+    if (at != SIZE_MAX) {
+        char *entry = environ[at];
+        if (!overwrite || (!strcmp(entry + n + 1, value) && v_env_is_stable(entry))) {
+            v_linux_unlock(&v_environment_lock);
+            return 0;
+        }
     }
     struct v_env_string *s = v_env_allocate(sizeof *s + n + v + 2);
     if (!s) {
