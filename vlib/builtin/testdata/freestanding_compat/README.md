@@ -116,7 +116,7 @@ independent libraries do not start additional build pools.
 
 ```sh
 python3 vlib/builtin/testdata/freestanding_compat/build_x11.py /tmp/vlibc-x11
-./v -new-compiler -no-retry-compilation -syscalls -d vlibc -no-system-libc -cc gcc \
+./v -no-retry-compilation -syscalls -d vlibc -no-system-libc -cc gcc \
   -ldflags "-static @/tmp/vlibc-x11/link.rsp" -o /tmp/bar /path/to/bar
 ```
 

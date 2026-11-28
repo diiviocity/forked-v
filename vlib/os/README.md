@@ -244,6 +244,8 @@ Windows shell output retains significant trailing spaces, including those produc
 Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
 On POSIX systems, waiting reaps the killed child and records its signal exit status.
 Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
+On Unix, `process.run_stopped()` waits for the child to stop before executing its program.
+Call `process.signal_continue()` after completing any parent-side setup.
 
 The C backend supports `Process` with `-freestanding` and `-syscalls` on Linux
 AMD64/ARM64 and macOS AMD64. Executable lookup, arguments, and environment vectors

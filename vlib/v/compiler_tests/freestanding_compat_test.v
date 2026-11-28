@@ -62,9 +62,9 @@ fn test_freestanding_c_library_compatibility_matrix() ! {
 					role := '${compiler}_vlibc_${with_vlibc}_prod_${production}_headers_${headers}'
 					output := os.join_path(root, role)
 					flags_file := '${output}.flags'
-					mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding',
-						'-ldflags', '-static', '-cstrict', '-cc', compiler, '-dump-c-flags',
-						flags_file, '-o', output]
+					mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-ldflags',
+						'-static', '-cstrict', '-cc', compiler, '-dump-c-flags', flags_file, '-o',
+						output]
 					if with_vlibc {
 						command << ['-d', 'vlibc']
 					}
@@ -103,8 +103,8 @@ fn test_freestanding_formatting_matches_hosted_c_library() ! {
 	source := os.join_path(compat_fixture, 'oracle.c.v')
 	for compiler in ['gcc', 'clang'] {
 		hosted := os.join_path(root, '${compiler}_hosted')
-		built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-			compiler, '-o', hosted, source])
+		built := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', compiler, '-o',
+			hosted, source])
 		assert built.exit_code == 0, built.output
 		reference_file := '${hosted}.bin'
 		code, output := compat_run([hosted, reference_file])
@@ -112,8 +112,8 @@ fn test_freestanding_formatting_matches_hosted_c_library() ! {
 		reference := os.read_bytes(reference_file)!
 		for production in [false, true] {
 			binary := os.join_path(root, '${compiler}_bare_${production}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-ldflags',
-				'-static', '-cc', compiler, '-o', binary]
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-ldflags', '-static',
+				'-cc', compiler, '-o', binary]
 			if production {
 				command << '-prod'
 			}
@@ -138,8 +138,8 @@ fn test_freestanding_resolver_udp_tcp_hosts_services_and_failures() ! {
 	for compiler in ['gcc', 'clang'] {
 		for production in [false, true] {
 			binary := os.join_path(root, '${compiler}_${production}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-freestanding', '-ldflags',
-				'-static', '-cc', compiler, '-o', binary]
+			mut command := [@VEXE, '-no-retry-compilation', '-freestanding', '-ldflags', '-static',
+				'-cc', compiler, '-o', binary]
 			if production {
 				command << ['-prod', '-d', 'vlibc']
 			}
@@ -163,9 +163,8 @@ fn test_shim_libc_with_musl_headers() ! {
 	root := compat_work_directory('musl')!
 	defer { os.rmdir_all(root) or {} }
 	output := os.join_path(root, 'musl')
-	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc', compiler,
-		'-shim-libc', '-ldflags', '-static', '-o', output,
-		os.join_path(compat_fixture, 'musl_headers.c.v')])
+	built := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', compiler, '-shim-libc',
+		'-ldflags', '-static', '-o', output, os.join_path(compat_fixture, 'musl_headers.c.v')])
 	assert built.exit_code == 0, built.output
 	compat_assert_static_elf(output)!
 	code, result := compat_run([output])

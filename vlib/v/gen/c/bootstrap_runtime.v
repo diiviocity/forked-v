@@ -54,6 +54,9 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 	// This V-owned process facade already declares posix_spawn's opaque actions
 	// and contains no include directives. Its libc dependencies are declared above.
 	g.write($embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string())
+	// The headerless compiler has no target siginfo_t layout.
+	g.writeln('static int v_cmdexec_child_has_exited(int pid) { (void)pid; return -1; }')
+	g.collect_preserved_c_fns(['v_cmdexec_child_has_exited'])
 	g.writeln('#endif')
 	g.write(headerless_compiler_detached_thread_helpers)
 	g.collect_preserved_c_fns(['getrusage', 'pthread_attr_set_qos_class_np', 'v3_pthread_zero',
@@ -164,10 +167,10 @@ static inline int v_sync_thread_create_detached(void* start, void* arg) {
 // headerless_cmdexec_poll_helper replaces the shipped poll headers when the
 // standalone ABI owns libc declarations; SDK-backed units keep the native helper.
 fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
+	cmdexec := g.core_header_directives.any(it.directive.module == 'cmdexec')
 	os_poll := g.core_header_directives.any(it.directive.module == 'os'
 		&& normalized_c_include_arg_path(it.directive.text.all_after('#include').trim_space()) == g.compiler_vroot.replace('\\', '/').trim_right('/') + '/vlib/os/fd_poll.h')
-	if g.target.os == 'windows'
-		|| (!os_poll && !g.core_header_directives.any(it.directive.module == 'cmdexec')) {
+	if g.target.os == 'windows' || (!os_poll && !cmdexec) {
 		return
 	}
 	g.write(headerless_cmdexec_poll)

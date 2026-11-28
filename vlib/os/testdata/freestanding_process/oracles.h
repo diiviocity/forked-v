@@ -13,6 +13,14 @@ static int process_fd_count(void) {
     for (int i = 0; i < 256; ++i) if (fcntl(i, F_GETFD) >= 0) ++n;
     return n;
 }
+/* Keep descriptors supplied by the runner out of the child leak check. */
+static int process_isolate_inherited_fds(void) {
+    for (int i = 3; i < 256; ++i) {
+        int flags = fcntl(i, F_GETFD);
+        if (flags >= 0 && fcntl(i, F_SETFD, flags | FD_CLOEXEC) < 0) return -1;
+    }
+    return 0;
+}
 static int process_close_stdio(void) {
     for (int i = 0; i < 3; ++i) {
         process_saved_stdio[i] = fcntl(i, F_DUPFD_CLOEXEC, 100);
@@ -27,9 +35,14 @@ static void process_restore_stdio(void) {
 static int process_limit_files(int room) {
     if (getrlimit(RLIMIT_NOFILE, &process_saved_files)) return -1;
     struct rlimit limit = process_saved_files;
-    /* The fixture opens only consecutive low descriptors. Reserve a partial
-     * pipe set, so rollback has real descriptors to close before the failure. */
-    limit.rlim_cur = (rlim_t)(process_fd_count() + room);
+    /* RLIMIT_NOFILE bounds descriptor numbers. Find the first vacant slot
+     * beyond the requested room even if the runner left open descriptors. */
+    int fd = -1;
+    for (int i = 0; i <= room; ++i) {
+        fd = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, fd + 1);
+        if (fd < 0 || close(fd) < 0) return -1;
+    }
+    limit.rlim_cur = (rlim_t)fd;
     return setrlimit(RLIMIT_NOFILE, &limit);
 }
 static void process_restore_files(void) { setrlimit(RLIMIT_NOFILE, &process_saved_files); }

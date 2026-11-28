@@ -46,8 +46,8 @@ fn v3_build_vlibc_shim(dir string, cc string, target pref.Target, target_args []
 	source := os.join_path(work, 'runtime.c')
 	flags_path := os.join_path(work, 'flags')
 	os.write_file(entry, 'module main\n')!
-	mut args := ['-new-compiler', '-no-retry-compilation', '-os', target.os, '-arch', target.arch,
-		'-cc', cc, '-freestanding', '-gc', 'none', '-d', 'no_main', '-d', 'vlibc_shim_object']
+	mut args := ['-no-retry-compilation', '-os', target.os, '-arch', target.arch, '-cc', cc,
+		'-freestanding', '-gc', 'none', '-d', 'no_main', '-d', 'vlibc_shim_object']
 	if !static_link { args << ['-cflags', '-DV_BARE_DYNAMIC_LOADER=1'] }
 	args << ['-dump-c-flags', flags_path, '-o', source, entry]
 	mut env := os.environ()
@@ -64,19 +64,20 @@ fn v3_build_vlibc_shim(dir string, cc string, target pref.Target, target_args []
 	content := os.read_file(source)!
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	ensure_native_object_cache_dir(cache_dir)!
-	cached_source := os.join_path(cache_dir, 'vlibc_' + sha256.hexhash(content) + '.c')
+	resolved_cache_dir := os.real_path(cache_dir)
+	cached_source := os.join_path(resolved_cache_dir, 'vlibc_' + sha256.hexhash(content) + '.c')
 	if !os.is_file(cached_source) {
 		stage := cached_source + '.tmp.' + tempname.unique_token()
 		os.write_file(stage, content)!
 		publish_native_c_object(stage, cached_source)!
 	}
 	generated := compile_c_object_with_manifest(cached_source + '.o', cached_source, cc,
-		[...target_args, ...compile], target, work, mut stats)!
+		[...target_args, ...compile], target, work, resolved_cache_dir, mut stats)!
 	for index in c_link_input_indices(flags) {
 		path := flags[index]
 		if path.ends_with('.c') {
 			objects << compile_c_object_with_manifest(path + '.o', path, cc,
-				[...target_args, ...compile], target, work, mut stats)!
+				[...target_args, ...compile], target, work, resolved_cache_dir, mut stats)!
 		} else if path.ends_with('.o') || path.ends_with('.a') {
 			objects << path
 		}

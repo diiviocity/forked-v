@@ -69,7 +69,8 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 	}
 
 	@[direct_array_access; manualfree]
-	fn (mut p Process) fsys_spawn_process(inherit_stdin bool) int {
+	fn (mut p Process) fsys_spawn_process(mode SpawnMode) int {
+		inherit_stdin := mode == .capture
 		mut plan := p.unix_prepare_spawn_plan(inherit_stdin)
 		mut pipes := [6]i32{init: -1}
 		mut pipe_error := 0
@@ -93,7 +94,7 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 		pid, fork_error := bf_fork_result()
 		if pid == 0 {
 			if error_pipe[0] >= 0 { bf_close(error_pipe[0]) }
-			p.fsys_process_child(&plan, &pipes, inherit_stdin, error_pipe[1])
+			p.fsys_process_child(&plan, &pipes, mode, error_pipe[1])
 		}
 		if fork_error != 0 {
 			if error_pipe[0] >= 0 { bf_close(error_pipe[0]) }
@@ -199,7 +200,7 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 				free(process)
 			}
 		}
-		if process._spawn(true) < 0 {
+		if process._spawn(.capture) < 0 {
 			return Result{ exit_code: -1, output: 'exec("${label}") failed' }
 		}
 		failed := process.err.len > 0
@@ -240,7 +241,7 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 	// No allocating V operations, cleanup defers, profiling, libc errno, or locks
 	// are permitted on this path: another thread may have held them at fork time.
 	@[direct_array_access; manualfree; no_profile; no_trace; noreturn]
-	fn (p &Process) fsys_process_child(plan &UnixSpawnPlan, pipes &[6]i32, inherit_stdin bool, error_fd int) {
+	fn (p &Process) fsys_process_child(plan &UnixSpawnPlan, pipes &[6]i32, mode SpawnMode, error_fd int) {
 		if p.use_stdio_ctl {
 			fsys_process_redirect(pipes[3], 1, error_fd)
 			fsys_process_redirect(if p.merge_stdio { pipes[3] } else { pipes[5] }, 2, error_fd)
@@ -251,6 +252,12 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 				fsys_process_child_fail('os: failed to set process group', err, error_fd)
 			}
 		}
+		if mode == .stopped {
+			err := bf_kill(bf_getpid(), $if macos { 17 } $else { 19 })
+			if err != 0 {
+				fsys_process_child_fail('os: failed to stop before exec', err, error_fd)
+			}
+		}
 		if p.has_stdin_path {
 			fd, err := bf_openat(p.stdin_path.str, 0, 0)
 			if err != 0 {
@@ -258,7 +265,7 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 			}
 			fsys_process_redirect(fd, 0, error_fd)
 			if fd != 0 { bf_close(fd) }
-		} else if p.use_stdio_ctl && !inherit_stdin {
+		} else if p.use_stdio_ctl && mode != .capture {
 			fsys_process_redirect(pipes[0], 0, error_fd)
 		}
 		fsys_process_close_pipes(pipes)
@@ -316,6 +323,10 @@ $if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (ma
 			return false
 		}
 		if exit_early_on_ret0 && ret == 0 { return true }
+		if status & 0xff == 0x7f {
+			p.status = .stopped
+			return true
+		}
 		p.reaped = true
 		mut code, signaled := posix_wait4_to_exit_status(status)
 		if signaled {

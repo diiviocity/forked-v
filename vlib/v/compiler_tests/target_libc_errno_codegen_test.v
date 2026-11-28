@@ -28,9 +28,9 @@ fn main() {}
 	}
 	out := os.join_path(root, 'out.c')
 	// -target-libc-headers refuses Windows targets, and the target OS defaults to the host's
-	result := os.exec([target_libc_errno_vexe, '-new-compiler', '-no-retry-compilation', '-nocache',
-		'-os', 'linux', '-freestanding', '-arch', 'arm32', '-target-libc-headers', '-gc', 'none',
-		'-no-bounds-checking', '-enable-globals', '-o', out, input])
+	result := os.exec([target_libc_errno_vexe, '-no-retry-compilation', '-nocache', '-os', 'linux',
+		'-freestanding', '-arch', 'arm32', '-target-libc-headers', '-gc', 'none', '-no-bounds-checking',
+		'-enable-globals', '-o', out, input])
 	assert result.exit_code == 0, result.output
 	code := os.read_file(out) or { panic(err) }
 	assert code.contains('#include <errno.h>'), code
@@ -39,8 +39,8 @@ fn main() {}
 		// Linux's bare runtime supplies one accessor. Its declaration and body
 		// must remain without a second declaration from the bodyless C binding.
 		expected := if name == '__errno_location' { 1 } else { 0 }
-		assert code.count(' ${name}(void);') == expected, name
-		assert code.count(' ${name}(void) {') == expected, name
+		assert code.count(' ${name}(void);') + code.count(' (${name})(void);') == expected, name
+		assert code.count(' ${name}(void) {') + code.count(' (${name})(void) {') == expected, name
 	}
 	gcc := os.find_abs_path_of_executable('arm-none-eabi-gcc') or { return }
 	object := os.join_path(root, 'out.o')

@@ -1,6 +1,15 @@
-module c
+module main
 
 import os
+
+fn testsuite_begin() {
+	// The mock runtimes compile generated Windows functions with clang and expect the
+	// GCC-style C, not the `__declspec` spellings that `-cc msvc`, the VFLAGS of the
+	// MSVC CI jobs, writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
 
 fn allocator_test_c_function(generated string, signature string) string {
 	assert generated.contains(signature), signature
@@ -59,6 +68,7 @@ static u8* (*g_arena_alloc_hook)();
 static u8* (*g_arena_realloc_hook)();
 static bool (*g_arena_owns_hook)();
 #define atomic_load_u32(pointer) (*(pointer))
+#define _unlikely_(condition) (condition)
 ${declarations}
 static void* live[16];
 static void* bases[16];
@@ -130,16 +140,18 @@ fn main() {
 	release_c(foreign)
 }
 ')!
-	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none',
-		'-manualfree', '-o', c_source, source])
+	generated_result := os.exec([@VEXE, '-nocache', '-os', 'windows', '-gc', 'none', '-manualfree',
+		'-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
 	allocate := allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')
 	copy := allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')
 	deallocate := allocator_test_c_function(generated, 'void v_free(void* ptr) {')
+	free_impl := allocator_test_c_function(generated, 'void free_impl(void* ptr, bool use_prealloc) {')
 	assert allocate.contains('_aligned_malloc(n, 1)'), allocate
 	assert copy.contains('v_malloc(sz)'), copy
-	assert deallocate.contains('_aligned_free(ptr)'), deallocate
+	assert deallocate.contains('free_impl(ptr, true)'), deallocate
+	assert free_impl.contains('_aligned_free(ptr)'), free_impl
 	promoted := allocator_test_c_function(generated, 'main__Holder* promoted(void) {')
 	promoted_allocation := promoted.split_into_lines()[1].trim_space()
 	assert promoted_allocation.contains('v3_aligned_memdup('), promoted_allocation
@@ -154,6 +166,7 @@ typedef struct { main__NaturalCell values[2]; } main__NaturalHolder;
 ')}
 ${allocate}
 ${copy}
+${free_impl}
 ${deallocate}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
@@ -199,11 +212,6 @@ fn test_windows_implicit_pointer_sum_drops_keep_the_v_allocator_family() {
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.v')
 	c_source := os.join_path(dir, 'main.c')
-	ownership_compiler := os.join_path(dir, 'v-ownership')
-	vlib := os.join_path(@VEXEROOT, 'vlib')
-	build_compiler := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d',
-		'ownership', '-path', vlib, '-o', ownership_compiler, os.join_path(vlib, 'v', 'v.v')])
-	assert build_compiler.exit_code == 0, build_compiler.output
 	os.write_file(source, '@[aligned: 64]
 struct AlignedCell { value int }
 struct NaturalCell { value int }
@@ -251,8 +259,9 @@ fn main() { implicit_aligned()
  implicit_generic_nested_aligned()
  implicit_generic_borrowed_wrapper(&seed) }
 ')!
-	result := os.exec([ownership_compiler, '-new-compiler', '-nocache', '-os', 'windows', '-gc',
-		'none', '-autofree', '-no-closures', '-o', c_source, source])
+	// The launcher resolves -autofree through its shared ownership compiler.
+	result := os.exec([@VEXE, '-nocache', '-os', 'windows', '-gc', 'none', '-autofree', '-no-closures',
+		'-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
 	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedValue', 'GenericAlignedValue_AlignedCell',
@@ -292,6 +301,7 @@ fn main() { implicit_aligned()
 	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
 ${allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')}
 ${allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')}
+${allocator_test_c_function(generated, 'void free_impl(void* ptr, bool use_prealloc) {')}
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}

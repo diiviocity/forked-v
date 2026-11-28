@@ -1,18 +1,21 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+const review_cgen_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_cgen_${tempname.unique_token()}')
 
-fn build_v3_review_cgen() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_cgen_regressions_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_begin() {
+	os.mkdir_all(review_cgen_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(review_cgen_fixture_dir) or {}
+}
+
+fn review_cgen_compile(input string, output string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', input, '-b', 'c', '-o', output], '', {
+		'VFLAGS': ''
+	})
 }
 
 fn review_cgen_write_project_file(root string, rel string, src string) {
@@ -21,11 +24,11 @@ fn review_cgen_write_project_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn review_cgen_run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn review_cgen_run_good(name string, src string) string {
+	good_src := os.join_path(review_cgen_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	compile := review_cgen_compile(good_src, good_bin)
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -33,8 +36,8 @@ fn review_cgen_run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn review_cgen_run_good_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+fn review_cgen_run_good_project(name string, files map[string]string, input string) string {
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -43,8 +46,8 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	compile := review_cgen_compile(input_path, good_bin)
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -52,8 +55,8 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 	return run.output.trim_space()
 }
 
-fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+fn review_cgen_run_bad_project(name string, files map[string]string, input string, expected string) {
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -62,16 +65,15 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	result := review_cgen_compile(input_path, bad_bin)
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
 fn test_power_consts_are_initialized_at_runtime() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'power_const_runtime_init', 'const byte_power = u8(2 ** 3)
+	out := review_cgen_run_good('power_const_runtime_init', 'const byte_power = u8(2 ** 3)
 const max_len = 2 ** 3
 const address_power = 3 ** 2
 const float_power = 9.0 ** 0.5
@@ -98,7 +100,7 @@ fn main() {
 }
 ')
 	assert out == '8\n8\n9\n3.0\n8\n4'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_power_const_runtime_init.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('u8 main__byte_power;'), c_code
@@ -122,8 +124,7 @@ fn main() {
 }
 
 fn test_struct_const_with_sum_type_uses_portable_runtime_init() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'struct_const_sum_type_runtime_init', 'interface Value {}
+	out := review_cgen_run_good('struct_const_sum_type_runtime_init', 'interface Value {}
 
 struct Empty {}
 
@@ -140,7 +141,7 @@ fn main() {
 }
 ')
 	assert out == 'true'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_const_sum_type_runtime_init.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_struct_const_sum_type_runtime_init.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('main__Holder main__holder;'), c_code
@@ -149,8 +150,7 @@ fn main() {
 }
 
 fn test_int_literal_receiver_uses_int_literal_method() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'int_literal_receiver', 'fn main() {
+	out := review_cgen_run_good('int_literal_receiver', 'fn main() {
 	println(255.hex_full())
 	println(4294967296.hex_full())
 }
@@ -159,8 +159,7 @@ fn test_int_literal_receiver_uses_int_literal_method() {
 }
 
 fn test_c_int_array_data_argument_uses_abi_buffer() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'c_int_array_data_abi', "#include <stdio.h>
+	out := review_cgen_run_good('c_int_array_data_abi', "#include <stdio.h>
 
 fn main() {
 	mut first := []int{len: 1}
@@ -170,7 +169,7 @@ fn main() {
 }
 ")
 	assert out == '6'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_c_int_array_data_abi.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_c_int_array_data_abi.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('int* _cabi_out_values_'), c_code
@@ -178,8 +177,7 @@ fn main() {
 }
 
 fn test_array_power_assign_uses_power_helper() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'array_power_assign', 'struct IntList {
+	out := review_cgen_run_good('array_power_assign', 'struct IntList {
 mut:
 	values []int
 }
@@ -243,7 +241,7 @@ fn main() {
 }
 ')
 	assert out == '8\n45\n9\n23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), c_code
 	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){__v3_internal_symbol_op_Exponent__pow(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
@@ -254,8 +252,7 @@ fn main() {
 }
 
 fn test_struct_field_power_assign_uses_operator_overload() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'struct_field_power_assign', 'struct Exponent {
+	out := review_cgen_run_good('struct_field_power_assign', 'struct Exponent {
 	value int
 }
 
@@ -283,7 +280,7 @@ fn main() {
 }
 ')
 	assert out == '23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_field_power_assign.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_struct_field_power_assign.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -291,8 +288,7 @@ fn main() {
 }
 
 fn test_mut_parameter_power_assign_uses_scalar_type() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'struct Number {
+	out := review_cgen_run_good('mut_parameter_power_assign', 'struct Number {
 mut:
 	value int
 }
@@ -310,7 +306,7 @@ fn main() {
 }
 ')
 	assert out == '9'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_mut_parameter_power_assign.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_mut_parameter_power_assign.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -319,8 +315,7 @@ fn main() {
 }
 
 fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]
+	out := review_cgen_run_good('addressed_inferred_array_const', 'const vals = [1, 2, 3]
 
 fn array_len(values &[]int) int {
 	return values.len
@@ -333,7 +328,7 @@ fn main() {
 }
 ')
 	assert out == '7'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_addressed_inferred_array_const.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_addressed_inferred_array_const.c')) or {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -343,8 +338,7 @@ fn main() {
 }
 
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {
+	out := review_cgen_run_good('numbered_string_identifier_collision', 'struct Named {
 	_str_2 string
 }
 
@@ -357,7 +351,7 @@ fn main() {
 }
 ')
 	assert out == 'local:field'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_numbered_string_identifier_collision.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_numbered_string_identifier_collision.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('string v__str_1 = '), c_code
@@ -366,8 +360,7 @@ fn main() {
 }
 
 fn test_module_qualified_free_call_is_not_rewritten_to_array_intrinsic() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'module_qualified_free_call', {
+	out := review_cgen_run_good_project('module_qualified_free_call', {
 		'v.mod':  'Module { name: "module_qualified_free_call" }\n'
 		'main.v': 'module main
 
@@ -389,8 +382,7 @@ pub fn free(values []int) int {
 }
 
 fn test_imported_enum_method_call_uses_declaration_symbol() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'imported_enum_method_call', {
+	out := review_cgen_run_good_project('imported_enum_method_call', {
 		'v.mod':         'Module { name: "imported_enum_method_call" }\n'
 		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
 		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
@@ -400,8 +392,7 @@ fn test_imported_enum_method_call_uses_declaration_symbol() {
 }
 
 fn test_selectively_imported_free_call_is_not_rewritten_to_array_intrinsic() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'selective_import_free_call', {
+	out := review_cgen_run_good_project('selective_import_free_call', {
 		'v.mod':  'Module { name: "selective_import_free_call" }\n'
 		'main.v': 'module main
 
@@ -423,8 +414,7 @@ pub fn free(values []int) int {
 }
 
 fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'sum_container_variant_alias_collision', {
+	out := review_cgen_run_good_project('sum_container_variant_alias_collision', {
 		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
 		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
 		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
@@ -434,8 +424,7 @@ fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
 }
 
 fn test_sum_name_import_alias_collision_uses_exact_sum() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'sum_name_import_alias_collision', {
+	out := review_cgen_run_good_project('sum_name_import_alias_collision', {
 		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
 		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
 		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
@@ -445,8 +434,7 @@ fn test_sum_name_import_alias_collision_uses_exact_sum() {
 }
 
 fn test_user_defined_free_method_is_preserved() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {
+	out := review_cgen_run_good('user_defined_free_method', 'struct Handle {
 mut:
 	freed bool
 }
@@ -465,8 +453,7 @@ fn main() {
 }
 
 fn test_pointer_receiver_on_pointer_parameter_passes_parameter_directly() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'pointer_receiver_on_pointer_param', 'struct S {
+	out := review_cgen_run_good('pointer_receiver_on_pointer_param', 'struct S {
 	n int
 }
 
@@ -489,8 +476,7 @@ fn main() {
 }
 
 fn test_mut_receiver_return_self_pointer_uses_receiver_pointer() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'mut_receiver_return_self_pointer', 'struct Command {
+	out := review_cgen_run_good('mut_receiver_return_self_pointer', 'struct Command {
 mut:
 	args []string
 }
@@ -513,7 +499,6 @@ fn main() {
 }
 
 fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
-	v3_bin := build_v3_review_cgen()
 	files := {
 		'v.mod': 'Module { name: "pointer_value_qualified_names" }\n'
 		'a/a.v': 'module a
@@ -549,7 +534,7 @@ fn f() b.Foo {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
+	review_cgen_run_bad_project('bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
 	mut field_files := files.clone()
 	field_files['main.v'] = 'module main
 
@@ -568,12 +553,11 @@ fn make_holder() Holder {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
+	review_cgen_run_bad_project('bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
 }
 
 fn test_optional_single_letter_struct_keeps_concrete_payload_type() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'optional_single_letter_struct', 'struct T {
+	out := review_cgen_run_good('optional_single_letter_struct', 'struct T {
 	value int
 }
 
@@ -602,8 +586,7 @@ fn main() {
 }
 
 fn test_enum_power_initializers_are_folded() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'const helper_base = 3
+	out := review_cgen_run_good('enum_power_initializers', 'const helper_base = 3
 
 enum Power {
 	direct = 2 ** 3
@@ -642,8 +625,7 @@ fn main() {
 }
 
 fn test_zero_and_new_preserve_nested_array_type_arguments() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'struct NewDefaults {
+	out := review_cgen_run_good('nested_array_zero_new', 'struct NewDefaults {
 mut:
 	values []int
 	lookup map[string]int
@@ -730,8 +712,7 @@ fn main() {
 }
 
 fn test_zero_and_new_preserve_direct_map_and_generic_type_arguments() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'direct_map_generic_zero_new', 'struct Box[T] {
+	out := review_cgen_run_good('direct_map_generic_zero_new', 'struct Box[T] {
 mut:
 	value T
 }
@@ -749,8 +730,7 @@ fn main() {
 }
 
 fn test_generic_new_default_initialization_stays_in_expression_scope() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'generic_new_expression_scope', "fn initialized_value() int {
+	out := review_cgen_run_good('generic_new_expression_scope', "fn initialized_value() int {
 	println('initialized')
 	return 1
 }

@@ -20,7 +20,7 @@ fn test_vlibc_preserves_regular_runtime_and_collector() ! {
 			['-vlibc', '-gc', 'none'], ['-shim-libc'], ['-shim-libc', '-gc', 'boehm'],
 			['-vlibc', '-no-system-libc', '-gc', 'none']] {
 			binary := os.join_path(root, '${production}_${index}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'gcc']
+			mut command := [@VEXE, '-no-retry-compilation', '-cc', 'gcc']
 			if production { command << '-prod' }
 			command << flags
 			command << ['-o', binary, source]

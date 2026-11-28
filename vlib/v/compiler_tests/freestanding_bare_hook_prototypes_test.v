@@ -26,8 +26,10 @@ fn main() {
 		panic(err)
 	}
 	c_file := os.join_path(root, 'main.c')
-	res := os.exec([bare_hook_vexe, '-gc', 'none', '-freestanding', '-no-std', '-os', 'linux',
-		'-o', c_file, '${src}'])
+	// The assertion inspects generated Linux C, even on a Windows MSVC runner.
+	// Do not inherit `-cc msvc` from VFLAGS: MSVC rejects a Linux target before Cgen.
+	res := os.exec([bare_hook_vexe, '-cc', 'gcc', '-gc', 'none', '-freestanding', '-no-std', '-os',
+		'linux', '-o', c_file, '${src}'])
 	assert res.exit_code == 0, res.output
 	c_source := os.read_file(c_file) or { panic(err) }
 	for hook, prototype in {
@@ -71,8 +73,8 @@ fn test_syscalls_uses_target_write_without_exporting_standalone_allocators() ! {
 	os.write_file(src, "fn main() { eprintln('hello') }")!
 	for target in ['freebsd', 'netbsd', 'dragonfly', 'solaris', 'macos'] {
 		c_file := os.join_path(root, '${target}.c')
-		result := os.exec([bare_hook_vexe, '-new-compiler', '-syscalls', '-gc', 'none', '-os',
-			target, '-arch', 'amd64', '-o', c_file, src])
+		result := os.exec([bare_hook_vexe, '-syscalls', '-gc', 'none', '-os', target, '-arch',
+			'amd64', '-o', c_file, src])
 		assert result.exit_code == 0, result.output
 		source := os.read_file(c_file)!
 		assert source.contains('bf_write(2, buffer'), target
@@ -105,8 +107,8 @@ fn main() {
 ")!
 		for mode in ['-syscalls', '-bare'] {
 			exe := os.join_path(root, 'probe')
-			result := os.exec([bare_hook_vexe, '-new-compiler', '-no-retry-compilation', '-cc',
-				'cc', '-gc', 'none', mode, '-o', exe, src])
+			result := os.exec([bare_hook_vexe, '-no-retry-compilation', '-cc', 'cc', '-gc', 'none',
+				mode, '-o', exe, src])
 			assert result.exit_code == 0, result.output
 			run := os.exec([exe])
 			assert run.exit_code == 0 && run.output.trim_space() == 'aligned allocation ok', run.output

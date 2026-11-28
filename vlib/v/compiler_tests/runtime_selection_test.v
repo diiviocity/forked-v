@@ -108,8 +108,7 @@ fn test_runtime_aliases_and_flag_order_select_the_expected_abi() ! {
 		['-freestanding', '-vlibc'],
 		['-vlibc', '-freestanding'],
 	] {
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-o',
-			os.join_path(work, 'selection.c')]
+		mut command := [@VEXE, '-no-retry-compilation', '-o', os.join_path(work, 'selection.c')]
 		bare := '-syscalls' in flags || '-bare' in flags || '-freestanding' in flags
 		if bare { command << ['-d', 'expected_bare'] }
 		if bare && '-freestanding' !in flags && '-no-system-libc' !in flags && '-shim-libc' !in flags {
@@ -153,8 +152,8 @@ fn test_syscalls_and_vlibc_runtime_selection_and_c_interoperability() ! {
 				with_libc := '-freestanding' !in flags && '-no-system-libc' !in flags && '-shim-libc' !in flags
 				name := '${compiler}_${production}_${index}'
 				program := os.join_path(work, name)
-				mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', compiler,
-					'-cstrict', '-dump-c-flags', '${program}.flags', '-o', program]
+				mut command := [@VEXE, '-no-retry-compilation', '-cc', compiler, '-cstrict',
+					'-dump-c-flags', '${program}.flags', '-o', program]
 				if production { command << '-prod' }
 				command << flags
 				command << source

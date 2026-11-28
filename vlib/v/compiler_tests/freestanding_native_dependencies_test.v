@@ -85,8 +85,8 @@ fn test_freestanding_literal_main_keeps_exported_runtime_dependencies() ! {
 	for cc in ['gcc', 'clang'] {
 		os.find_abs_path_of_executable(cc) or { continue }
 		output := os.join_path(dir, cc)
-		built := cmdexec.run(@VEXE, ['-new-compiler', '-cc', cc, '-freestanding', '-ldflags', '-static',
-			'-o', output, source])
+		built := cmdexec.run(@VEXE, ['-cc', cc, '-freestanding', '-ldflags', '-static', '-o', output,
+			source])
 		assert built.exit_code == 0, built.output
 		executed := cmdexec.run(output, [])
 		assert executed.exit_code == 0 && executed.output == 'hello\n', executed.output

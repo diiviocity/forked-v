@@ -42,6 +42,8 @@ fn fix_windows_path(path string) string {
 }
 
 // open_file tries to open or create a file with custom flags and permissions.
+// On Unix-like systems the file is close-on-exec: programs started later do not
+// inherit it.
 // `mode` combines `r` (read), `w` (write, creating or truncating the file),
 // `a` (append, creating the file), `+` (read and write) and `b` (binary). On
 // Unix, `s`, `n` and `c` also set `O_SYNC`, `O_NONBLOCK` and `O_NOCTTY`.
@@ -126,7 +128,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		fd := $if windows {
 			C._wopen(p.to_wide(), flags, permission)
 		} $else {
-			C.open(&char(p.str), flags, permission)
+			C.open(&char(p.str), flags | C.O_CLOEXEC, permission)
 		}
 		if fd == -1 {
 			return error_posix()

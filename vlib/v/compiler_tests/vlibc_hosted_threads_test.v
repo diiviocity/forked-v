@@ -30,7 +30,7 @@ fn main() {
 		for index, flags in [['-vlibc'], ['-shim-libc'], ['-syscalls', '-d', 'vlibc'],
 			['-syscalls', '-d', 'vlibc', '-no-system-libc']] {
 			program := os.join_path(work, 'threads_${index}')
-			mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none']
+			mut command := [@VEXE, '-no-retry-compilation', '-gc', 'none']
 			command << flags
 			command << ['-o', program, source]
 			compiled := os.exec(command)

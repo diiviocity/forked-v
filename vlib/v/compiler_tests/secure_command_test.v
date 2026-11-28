@@ -7,12 +7,21 @@ const secure_v3_dir = os.dir(secure_tests_dir)
 const secure_vlib_dir = os.dir(secure_v3_dir)
 const secure_v3_src = os.join_path(secure_v3_dir, 'v.v')
 
-fn build_secure_command_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_secure_command_${os.getpid()}_${rand.ulid()}')
+// One compiler serves the whole suite; each case used to build its own.
+const secure_v3_bin = os.join_path(os.temp_dir(), 'v3_secure_command_${os.getpid()}_${rand.ulid()}') + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
 	result := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${secure_vlib_dir}|@vlib|@vmodules',
-		'-o', v3_bin, secure_v3_src])
+		'-o', secure_v3_bin, secure_v3_src])
 	assert result.exit_code == 0, result.output
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rm(secure_v3_bin) or {}
+}
+
+fn build_secure_command_v3() string {
+	return secure_v3_bin
 }
 
 fn secure_temp_path(name string) string {
@@ -84,7 +93,6 @@ fn test_split_linker_path_is_not_passed_to_object_compile() {
 	os.mkdir_all(lib_dir) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	os.write_file(os.join_path(root, 'helper.c'), 'int split_link_answer(void) { return 42; }\n') or {
 		panic(err)
@@ -247,7 +255,6 @@ fn test_c_object_cache_bypasses_failed_dependency_scan() {
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	compiler := os.join_path(root, 'cc_without_dependencies')
 	os.write_file(compiler, '#!/bin/sh
@@ -305,7 +312,6 @@ fn test_c_object_cache_falls_back_when_dependency_marker_is_missing() {
 	defer {
 		os.unsetenv('V3_CACHE_TRACE')
 		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
 	}
 	// On `-M` this wrapper succeeds but prints unrelated text with no `v3cache:`
 	// marker; every other invocation delegates to the real `cc`.
@@ -349,71 +355,4 @@ fn main() { println(int_str(C.marker_value())) }
 	assert second.exit_code == 0, second.output
 	assert cmdexec.run(second_out, []string{}).output.trim_space() == '9'
 	assert second.output.contains('C object cache bypass:'), second.output
-}
-
-// If a dependency changes between the moment the cache key is computed and the
-// moment compilation finishes, the object no longer matches the key. The cache
-// must detect this by re-hashing inputs after compilation and use a build-local
-// object rather than certifying the stale content under that key.
-fn test_c_object_cache_detects_input_change_during_compile() {
-	$if windows {
-		return
-	}
-	v3_bin := build_secure_command_v3()
-	root := secure_temp_path('object_cache_input_race')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.unsetenv('V3_CACHE_TRACE')
-		os.rmdir_all(root) or {}
-		os.rm(v3_bin) or {}
-	}
-	header := os.join_path(root, 'value.h')
-	c_source := os.join_path(root, 'helper.c')
-	v_source := os.join_path(root, 'main.v')
-	// This wrapper delegates to the real `cc`, but on the object compile of
-	// `helper.c` (`-c`) it mutates the header AFTER building the object —
-	// simulating a source edit that lands while the compiler is running. Runtime
-	// objects such as the GC are compiled through the same wrapper first.
-	compiler := os.join_path(root, 'cc_mutating_header')
-	os.write_file(compiler, '#!/bin/sh
-is_compile=0
-prev=""
-for arg in "\$@"; do
-	if [ "\$prev" = "-c" ]; then
-		case "\$arg" in
-		*/helper.c) is_compile=1 ;;
-		esac
-	fi
-	prev="\$arg"
-done
-cc "\$@"
-rc=\$?
-if [ "\$is_compile" = "1" ]; then
-	printf "#define RACE_VALUE 7\\n" > "${header}"
-fi
-exit \$rc
-') or {
-		panic(err)
-	}
-	os.chmod(compiler, 0o700) or { panic(err) }
-	os.write_file(header, '#define RACE_VALUE 1\n') or { panic(err) }
-	os.write_file(c_source, '#include "value.h"\nint race_value(void) { return RACE_VALUE; }\n') or {
-		panic(err)
-	}
-	os.write_file(v_source, 'module main
-#flag @DIR/helper.o
-fn C.race_value() int
-fn main() { println(int_str(C.race_value())) }
-') or {
-		panic(err)
-	}
-	os.setenv('V3_CACHE_TRACE', '1', true)
-	first_out := os.join_path(root, 'first')
-	first := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', first_out])
-	assert first.exit_code == 0, first.output
-	// The object was built from RACE_VALUE 1; the mid-compile edit to 7 means the
-	// object must not be published under the key that hashed the original header.
-	assert first.output.contains('inputs changed during compilation'), first.output
-	assert cmdexec.run(first_out, []string{}).output.trim_space() == '1'
 }

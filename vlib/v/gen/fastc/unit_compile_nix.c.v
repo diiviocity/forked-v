@@ -4,9 +4,9 @@ import os
 import strings
 import time
 
-fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
+fn C.v_os_exec_capture_start(argv &&char, child_pid &i32, read_fd &i32) i32
 
-fn C.v_os_exec_capture_input_start(argv &&char, child_pid &int, read_fd &int, write_fd &int) int
+fn C.v_os_exec_capture_input_start(argv &&char, child_pid &i32, read_fd &i32, write_fd &i32) i32
 
 fn C.waitpid(pid int, status &int, options int) int
 
@@ -531,14 +531,15 @@ fn fastc_start_capture(argv []string, pid &int, read_fd &int) bool {
 		cargs << &char(arg.str)
 	}
 	cargs << &char(unsafe { nil })
-	mut c_pid := i32(0)
-	mut c_read_fd := i32(-1)
-	if C.v_os_exec_capture_start(cargs.data, &c_pid, &c_read_fd) != 0 {
+	mut cpid := i32(0)
+	mut cfd := i32(-1)
+	if C.v_os_exec_capture_start(cargs.data, &cpid, &cfd) != 0 {
 		return false
 	}
+	// The caller owns the V-width slots; only the C-width locals cross the ABI.
 	unsafe {
-		*pid = int(c_pid)
-		*read_fd = int(c_read_fd)
+		*pid = int(cpid)
+		*read_fd = int(cfd)
 	}
 	return true
 }
@@ -550,16 +551,17 @@ fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &in
 			cargs << &char(arg.str)
 		}
 		cargs << &char(unsafe { nil })
-		mut c_pid := i32(0)
-		mut c_read_fd := i32(-1)
-		mut c_write_fd := i32(-1)
-		if C.v_os_exec_capture_input_start(cargs.data, &c_pid, &c_read_fd, &c_write_fd) != 0 {
+		mut cpid := i32(0)
+		mut crfd := i32(-1)
+		mut cwfd := i32(-1)
+		if C.v_os_exec_capture_input_start(cargs.data, &cpid, &crfd, &cwfd) != 0 {
 			return false
 		}
+		// The caller owns the V-width slots; only the C-width locals cross the ABI.
 		unsafe {
-			*pid = int(c_pid)
-			*read_fd = int(c_read_fd)
-			*write_fd = int(c_write_fd)
+			*pid = int(cpid)
+			*read_fd = int(crfd)
+			*write_fd = int(cwfd)
 		}
 		return true
 	} $else {
@@ -570,7 +572,7 @@ fn fastc_start_capture_input(argv []string, pid &int, read_fd &int, write_fd &in
 // fastc_wait_exit_code waits for the process and returns its exit code; a
 // process killed by a signal reports 128 plus the signal number.
 fn fastc_wait_exit_code(pid int) int {
-	mut status := 0
+	mut status := i32(0)
 	for {
 		C.errno = 0
 		if C.waitpid(pid, &status, 0) != -1 {
@@ -581,7 +583,7 @@ fn fastc_wait_exit_code(pid int) int {
 		}
 	}
 	if (status & 0x7f) == 0 {
-		return (status >> 8) & 0xff
+		return int((status >> 8) & 0xff)
 	}
-	return 128 + (status & 0x7f)
+	return int(128 + (status & 0x7f))
 }

@@ -11,7 +11,7 @@ def compile_v_runtime(fixture, work, cc, flags, *, shim_object=True):
     runtime_flags = ['-freestanding', '-gc', 'none', '-d', 'no_main']
     if shim_object:
         runtime_flags += ['-d', 'vlibc_shim_object']
-    subprocess.run([v, '-new-compiler', '-no-retry-compilation', '-cc', cc, *runtime_flags,
+    subprocess.run([v, '-no-retry-compilation', '-cc', cc, *runtime_flags,
                     '-dump-c-flags', work / 'runtime.flags', '-o', source, entry], check=True,
                    env={k: value for k, value in os.environ.items() if k not in ('VFLAGS', 'VEXE')})
     obj = work / 'runtime.o'

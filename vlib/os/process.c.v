@@ -59,7 +59,7 @@ pub fn (mut p Process) signal_continue() {
 // process is finished.
 pub fn (mut p Process) wait() {
 	if p.status == .not_started {
-		p._spawn(false)
+		p._spawn(.normal)
 	}
 	if p.status !in [.running, .stopped, .aborted] || p.reaped {
 		return
@@ -113,11 +113,14 @@ fn fsys_release_process_environment(mut environment map[string]string) {
 	environment = map[string]string{}
 }
 
-// _spawn should not be called directly, but only by p.run()/p.wait().
-// Synchronous syscall capture also uses it with inherited stdin.
-// It encapsulates the fork/execve mechanism that allows the
-// asynchronous starting of the new child process.
-fn (mut p Process) _spawn(inherit_stdin bool) int {
+enum SpawnMode {
+	normal
+	stopped
+	capture
+}
+
+// _spawn starts the child for run, run_stopped, wait or synchronous output capture.
+fn (mut p Process) _spawn(mode SpawnMode) int {
 	if !p.env_is_custom {
 		p.env = []string{}
 		mut current_environment := environ()
@@ -132,7 +135,7 @@ fn (mut p Process) _spawn(inherit_stdin bool) int {
 	$if windows {
 		pid = p.win_spawn_process()
 	} $else {
-		pid = p.unix_spawn_process(inherit_stdin)
+		pid = p.unix_spawn_process(mode)
 	}
 	p.pid = pid
 	$if (freestanding || syscalls) && !native && ((linux && (amd64 || arm64)) || (macos && amd64)) {
@@ -384,7 +387,7 @@ pub fn (mut p Process) run() {
 	if p.status != .not_started {
 		return
 	}
-	p._spawn(false)
+	p._spawn(.normal)
 }
 
 // system_args runs a program with literal arguments and inherited standard streams.

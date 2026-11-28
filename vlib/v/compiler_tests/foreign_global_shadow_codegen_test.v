@@ -23,7 +23,7 @@ fn test_foreign_global_preserves_local_and_parameter_bindings() ! {
 	} $else { [[]string{}] }
 	for index, mode in modes {
 		binary := os.join_path(root, 'probe_${index}')
-		mut arguments := ['-new-compiler', '-no-retry-compilation', '-cc', 'gcc', '-o', binary]
+		mut arguments := ['-no-retry-compilation', '-cc', 'gcc', '-o', binary]
 		arguments << mode
 		arguments << os.join_path(copy, 'app')
 		built := cmdexec.run(@VEXE, arguments)

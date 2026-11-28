@@ -10,9 +10,14 @@ import v.token
 // and the libc bindings supplied by target headers when requested.
 fn fastc_target_runtime_preferences(prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
-	if 'fastc_backend' !in scoped.user_defines {
+	// FastC's runtime does not support the builtin arena hook table.
+	if 'fastc_backend' !in scoped.user_defines || 'no_builtin_arena' !in scoped.user_defines {
 		scoped.user_defines = scoped.user_defines.clone()
-		scoped.user_defines << 'fastc_backend'
+		for define in ['fastc_backend', 'no_builtin_arena'] {
+			if define !in scoped.user_defines {
+				scoped.user_defines << define
+			}
+		}
 	}
 	if scoped.target_libc_headers {
 		scoped.user_defines = scoped.user_defines.clone()
@@ -223,14 +228,7 @@ fn fastc_native_quoted_include_path(directive string, source_path string, prefs 
 	if header.contains('@VMODROOT') {
 		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
 	}
-	if header.contains('@DIR') {
-		// Match the emitted directive (fastc_resolve_c_pseudo_paths).
-		header = header.replace('@DIR', os.real_path(os.dir(os.real_path(source_path))))
-	}
-	if !os.is_abs_path(header) {
-		header = os.join_path(os.dir(source_path), header)
-	}
-	return header
+	return fastc_local_c_include_path(header, source_path)
 }
 
 fn fastc_target_libc_declares(name string) bool {

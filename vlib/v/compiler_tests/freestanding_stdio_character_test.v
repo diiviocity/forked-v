@@ -10,8 +10,8 @@ fn test_freestanding_stdio_character_state_and_thread_ownership() ! {
 		for compiler in ['gcc', 'clang'] {
 			for production in [false, true] {
 				binary := os.join_path(root, '${compiler}_${production}')
-				mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-syscalls', '-vlibc',
-					'-no-system-libc', '-cc', compiler, '-o', binary]
+				mut command := [@VEXE, '-no-retry-compilation', '-syscalls', '-vlibc', '-no-system-libc',
+					'-cc', compiler, '-o', binary]
 				if production { command << '-prod' }
 				command << source
 				built := os.exec(command)

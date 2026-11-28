@@ -51,10 +51,10 @@ fn test_windows_tinyc_builds_bundled_collector_with_and_without_thread_local_all
 	for thread_local in [false, true] {
 		flags := windows_tinyc_gc_flags(true, thread_local)
 		objects := flags.filter(it.ends_with('gc_tinyc_windows.o'))
-		// The `#flag` path keeps the forward slashes written in the
-		// builtin file, while `os.join_path` uses `\` on Windows.
-		expected_object := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'gc_tinyc_windows.o').replace('\\', '/')
-		assert objects.map(it.replace('\\', '/')) == [expected_object], flags.str()
+		// The `#flag @VEXEROOT/vlib/...` path keeps its `/` after a Windows root, like `D:\v/vlib`.
+		assert objects.map(os.norm_path(it)) == [
+			os.join_path(@VEXEROOT, 'vlib', 'builtin', 'gc_tinyc_windows.o'),
+		], flags.str()
 		assert !flags.any(it.replace('\\', '/').ends_with('/thirdparty/libgc/gc.o')), flags.str()
 		assert !flags.any(it.contains('GC_BUILTIN_ATOMIC')), flags.str()
 		assert !flags.any(it.contains('libgc.a')), flags.str()

@@ -1300,7 +1300,7 @@ fn (mut inputs V3ProgramLinkInputs) add_linker_report(report V3LinkerReport, pat
 	}
 	for name in not_found {
 		file := inputs.reported_path(name, cc_dir) or { continue }
-		if absent[file] || file.contains_any('\n') || system_roots.any(file.starts_with(it + '/')) {
+		if absent[file] || file.contains_any('\n') || system_roots.any(v3_path_is_below(file, it)) {
 			continue
 		}
 		absent[file] = true
@@ -1319,7 +1319,7 @@ fn (mut inputs V3ProgramLinkInputs) reported_path(name string, cc_dir string) ?s
 		return none
 	}
 	if os.is_abs_path(name) {
-		return if name.starts_with(cc_dir + '/') { none } else { name }
+		return if v3_path_is_below(name, cc_dir) { none } else { name }
 	}
 	if !v3_relative_path_leaves_its_directory(name) {
 		return none
@@ -1333,9 +1333,24 @@ fn (mut inputs V3ProgramLinkInputs) reported_path(name string, cc_dir string) ?s
 // `usr/lib/system`, which the library of the system is made of.
 fn v3_is_deep_in_a_system_root(path string, system_roots []string) bool {
 	for root in system_roots {
-		if path.starts_with(os.join_path(root, 'usr', 'lib', 'system') + '/') {
+		if v3_path_is_below(path, os.join_path(root, 'usr', 'lib', 'system')) {
 			return true
 		}
 	}
 	return false
+}
+
+// v3_path_is_below reports whether `path` names a file below the directory `dir`.
+// The parts of a Windows path can be separated by `\` as well as by `/`.
+fn v3_path_is_below(path string, dir string) bool {
+	$if windows {
+		normalized_dir := dir.replace('\\', '/')
+		normalized_path := path.replace('\\', '/')
+		return normalized_path.len > normalized_dir.len
+			&& normalized_path.starts_with(normalized_dir)
+			&& (normalized_path[normalized_dir.len] == `/` || normalized_dir.ends_with('/'))
+	} $else {
+		return path.len > dir.len && path.starts_with(dir)
+			&& (path[dir.len] == `/` || dir.ends_with('/'))
+	}
 }
