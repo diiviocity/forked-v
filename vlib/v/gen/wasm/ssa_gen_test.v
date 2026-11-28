@@ -637,6 +637,39 @@ assert.equal(e.pointer_round_trip(4294967296n), 0n);
 	}
 }
 
+fn test_ssa_wasm_signed_integer_constant_casts_keep_comparison_sign() {
+	dir := ssa_wasm_test_dir('signed_constant_casts')
+	defer { os.rmdir_all(dir) or {} }
+	source := '
+pub fn less(x u32) bool {
+	return i64(u64(9223372036854775808)) < x
+}
+
+pub fn greater(x u32) bool {
+	return x > i64(u64(0x8000_0000_0000_0000))
+}
+
+pub fn unsigned_again() u64 {
+	return u64(i64(u64(0xffff_ffff_ffff_ffff)))
+}
+'
+	for production in [false, true] {
+		m, config := ssa_wasm_emit('signed_constant_comparisons', source, production)
+		mut g := SSAGen.new(m)
+		g.configure(config.exports, config.init_fns, config.main_fn)
+		g.gen() or { panic(err) }
+		path := os.join_path(dir, 'comparisons_${production}.wasm')
+		g.write(path) or { panic(err) }
+		assert_ssa_wasm_execution(path, '
+assert.equal(e.less(0), 1);
+assert.equal(e.less(0xffffffff), 1);
+assert.equal(e.greater(0), 1);
+assert.equal(e.greater(0xffffffff), 1);
+assert.equal(BigInt.asUintN(64, e.unsigned_again()), 0xffffffffffffffffn);
+')
+	}
+}
+
 fn test_ssa_wasm_imported_function_value_keeps_its_definition() {
 	dir := ssa_wasm_test_dir('imported_fn_ref')
 	defer { os.rmdir_all(dir) or {} }

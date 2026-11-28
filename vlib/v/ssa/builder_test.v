@@ -172,6 +172,54 @@ fn test_char_literal_value_decodes_unicode_and_escapes() {
 	}
 }
 
+fn test_64_bit_integer_constant_casts_use_the_target_type() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_i64_constant_casts_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn high_bit() u64 { return u64(9223372036854775808) }
+fn signed_high_bit() i64 { return i64(u64(9223372036854775808)) }
+fn unsigned_again() u64 { return u64(i64(u64(0xffff_ffff_ffff_ffff))) }
+fn dynamic_cast(value i64) u64 { return u64(value) }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 8 }
+	})
+
+	names := {
+		'high_bit':        '9223372036854775808'
+		'signed_high_bit': '-9223372036854775808'
+		'unsigned_again':  '18446744073709551615'
+	}
+	mut found := 0
+	for f in m.funcs {
+		if f.name !in names && f.name != 'dynamic_cast' {
+			continue
+		}
+		last := m.blocks[f.blocks[0]].instrs.last()
+		ret := m.instrs[m.values[last].index]
+		assert ret.op == .ret
+		result := m.values[ret.operands[0]]
+		typ := m.type_store.types[result.typ]
+		assert typ.kind == .int_t && typ.width == 64
+		assert typ.is_unsigned == (f.name != 'signed_high_bit')
+		if f.name == 'dynamic_cast' {
+			assert result.kind == .instruction && m.instrs[result.index].op == .bitcast
+		} else {
+			assert result.kind == .constant, f.name
+			assert result.name == names[f.name], f.name
+		}
+		found++
+	}
+	assert found == 4
+}
+
 fn test_rune_literals_use_rune_width() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_rune_literals_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
