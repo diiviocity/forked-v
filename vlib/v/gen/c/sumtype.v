@@ -156,8 +156,8 @@ fn (mut g FlatGen) sum_slot_aware_field_type(typ &types.Type) ?string {
 	if slot_type := g.sum_pointer_slot_c_type(typ) { return slot_type }
 	clean := unalias_type(typ)
 	if clean is types.FnType {
-		encoded := g.fn_ptr_type_key(clean)
-		if encoded.contains('__v3_sum_fixed_pointer_') { return encoded }
+		// Match the typedef registered before struct emission, including nested callbacks.
+		return g.fn_ptr_type_key(clean)
 	}
 	return none
 }
