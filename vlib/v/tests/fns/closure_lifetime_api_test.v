@@ -889,6 +889,18 @@ fn test_closure_runtime_setup_state_is_kept_in_v() {
 	// compiled separately cannot share the closure runtime.
 	closure_dir := os.join_path(os.dir(vexe), 'vlib/builtin/closure')
 	for file in os.ls(closure_dir) or { panic(err) } {
+		if file == 'closure_freestanding.h' {
+			// The freestanding header provides inline platform operations and
+			// immutable templates. Mutable setup state must be shared by all TUs.
+			header := os.read_file(os.join_path(closure_dir, file)) or { panic(err) }
+			for line in header.split_into_lines() {
+				declaration := line.trim_space()
+				if declaration.starts_with('static ') {
+					assert declaration.starts_with('static inline ') && declaration.contains('('), line
+				}
+			}
+			continue
+		}
 		assert !file.ends_with('.h'), file
 		if !file.ends_with('.v') {
 			continue
