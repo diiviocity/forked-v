@@ -8,8 +8,8 @@ fn test_nonempty_zero_allocation_failures_unwind_before_returning_or_clearing_nu
 	source := os.join_path(@VMODROOT, 'vlib/v/tests/recover/testdata/checked_zero/main.c.v')
 	mut modes := [['-gc', 'none']]
 	$if gcboehm ? {
-		modes << ['-gc', 'boehm']
-		modes << ['-gc', 'boehm', '-d', 'gcboehm_opt']
+		modes << ['-gc', 'boehm_full']
+		modes << ['-gc', 'boehm_full_opt']
 	}
 	for mode in modes {
 		mut command := [@VEXE, '-o', bin]

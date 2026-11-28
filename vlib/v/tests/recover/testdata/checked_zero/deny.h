@@ -15,18 +15,17 @@ static void *checked_aligned_malloc(size_t size, size_t alignment) {
 }
 #define _aligned_malloc(size, alignment) checked_aligned_malloc(size, alignment)
 #endif
-#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
-#include <gc.h>
-static void *checked_gc_malloc(size_t size) {
-	if (refuse_zero_storage && size == 513) return NULL;
-	return GC_MALLOC(size);
+/* The generated translation unit calls these native adapters. Intercept
+ * those calls even when the collector itself is compiled separately. */
+void *v_gc_malloc(size_t);
+void *v_gc_malloc_atomic(size_t);
+static inline void *checked_gc_malloc(size_t size) {
+    if (refuse_zero_storage && size == 513) return NULL;
+    return v_gc_malloc(size);
 }
-static void *checked_gc_malloc_atomic(size_t size) {
-	if (refuse_zero_storage && size == 513) return NULL;
-	return GC_MALLOC_ATOMIC(size);
+static inline void *checked_gc_malloc_atomic(size_t size) {
+    if (refuse_zero_storage && size == 513) return NULL;
+    return v_gc_malloc_atomic(size);
 }
-#undef GC_MALLOC
-#define GC_MALLOC(size) checked_gc_malloc(size)
-#undef GC_MALLOC_ATOMIC
-#define GC_MALLOC_ATOMIC(size) checked_gc_malloc_atomic(size)
-#endif
+#define v_gc_malloc(size) checked_gc_malloc(size)
+#define v_gc_malloc_atomic(size) checked_gc_malloc_atomic(size)
